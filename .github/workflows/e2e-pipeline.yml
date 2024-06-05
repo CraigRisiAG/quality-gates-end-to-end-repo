@@ -17,8 +17,37 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Run Unit Tests
-        run: mvn test
+      - name: Run Unit Tests with JaCoCo
+        run: mvn test jacoco:report
+  
+      - name: Verify code coverage
+        run: mvn jacoco:check
+        env:
+            JACOCO_COVERAGE: 0.8 # 80% coverage  deploy-to-prod:
+    needs: [analyze]
+    runs-on: ubuntu-latest
+    environment: Production
+
+    steps: 
+      - name: Check server status
+        run: |
+          SERVER_IP=${{ secrets.SERVER_IP }}
+          echo "Pinging $SERVER_IP..."
+          ping -c 4 $SERVER_IP
+          echo "Server is up and running."
+
+      - name: "cleanup destination at ${{ vars.PROD_IP }}"
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ vars.PROD_IP }}
+          port: ${{ vars.PROD_PORT }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_KEY }}
+          script: cp -f /home/ec2-user/deployment/deploy/digibank.war ${{ vars.PROD_TOMCAT }}
+          
+      - name: Sleep for 10 seconds
+        run: sleep 10s
+        shell: bash
   
       - name: Build with Maven
         run: mvn -DskipTests -B package --no-transfer-progress --file ./pom.xml
@@ -80,7 +109,7 @@ jobs:
             rm -rf ${{ vars.UAT_TOMCAT }}/digi*
             
   deploy: 
-    needs: [build]
+    needs: [cleanup]
     runs-on: ubuntu-latest
     environment: UAT
     
@@ -135,3 +164,26 @@ jobs:
           -H "Accept: application/vnd.github.v3+json" \
           https://api.github.com/repos/tau-github-actions-for-testing/tau-digital-bank-e2e-tests/dispatches \
           -d  '{"event_type": "trigger-tests", "client_payload" : { "sut" : "${{ vars.UAT_IP }}" } }'
+
+  deploy-to-prod:
+    needs: [e2e-tests]
+    runs-on: ubuntu-latest
+    environment: Production
+
+      name: Check server status
+        run: |
+          SERVER_IP=${{ secrets.SERVER_IP }}
+          echo "Pinging $SERVER_IP..."
+          ping -c 4 $SERVER_IP
+          echo "Server is up and running."
+
+    steps: 
+      - name: "cleanup destination at ${{ vars.PROD_IP }}"
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ vars.PROD_IP }}
+          port: ${{ vars.PROD_PORT }}
+          username: ${{ secrets.USER }}
+          key: ${{ secrets.SSH_KEY }}
+        script: cp -f /home/ec2-user/deployment/deploy/digibank.war ${{ vars.PROD_TOMCAT }}
+        
