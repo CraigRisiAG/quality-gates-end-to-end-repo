@@ -80,7 +80,7 @@ jobs:
             rm -rf ${{ vars.UAT_TOMCAT }}/digi*
             
   deploy: 
-    needs: [cleanup]
+    needs: [build]
     runs-on: ubuntu-latest
     environment: UAT
     
